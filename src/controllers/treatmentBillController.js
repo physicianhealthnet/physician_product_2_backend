@@ -1,5 +1,7 @@
 import { createDBService } from "../services/db.service.js";
 import TreatmentBill from "../models/treatmentBill.model.js";
+import LabPrescription from "../models/labPrescription.model.js";
+import ScanPrescription from "../models/scanPrescription.model.js";
 import { handleWhatsAppNotification } from "../utils/notification.helper.js";
 
 const treatmentBillService = createDBService(TreatmentBill);
@@ -38,6 +40,18 @@ export const addTreatmentBillController = async (req, res) => {
       ...billData,
       treatment_status: "live",
     });
+
+    // Process attached labs and scans to mark them as billed
+    if (treatmentBill.treatments && Array.isArray(treatmentBill.treatments)) {
+      for (const item of treatmentBill.treatments) {
+        if (item.labPrescriptionId) {
+          await LabPrescription.findByIdAndUpdate(item.labPrescriptionId, { isBilled: true });
+        }
+        if (item.scanPrescriptionId) {
+          await ScanPrescription.findByIdAndUpdate(item.scanPrescriptionId, { isBilled: true });
+        }
+      }
+    }
 
     // Send Notification
     handleWhatsAppNotification(
@@ -113,6 +127,17 @@ export const updateTreatmentBillController = async (req, res) => {
       id,
       req.body
     );
+
+    if (updatedTreatmentBill && updatedTreatmentBill.treatments && Array.isArray(updatedTreatmentBill.treatments)) {
+      for (const item of updatedTreatmentBill.treatments) {
+        if (item.labPrescriptionId) {
+          await LabPrescription.findByIdAndUpdate(item.labPrescriptionId, { isBilled: true });
+        }
+        if (item.scanPrescriptionId) {
+          await ScanPrescription.findByIdAndUpdate(item.scanPrescriptionId, { isBilled: true });
+        }
+      }
+    }
     return res.status(200).json({
       message: "Treatment bill updated successfully",
       data: updatedTreatmentBill,
