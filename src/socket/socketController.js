@@ -28,7 +28,7 @@ export const initializeSocket = (io) => {
             // Patient joins their specific chat room
             const room = `chat:${clinicId}:${patientId}`;
             socket.join(room);
-            console.log(`Patient ${patientName} joined ${room}`);
+            console.log(`Patient ${patientName || userName || 'Patient'} joined ${room}`);
         }
 
         // Handle Doctor Sending Message
@@ -73,6 +73,36 @@ export const initializeSocket = (io) => {
 
                 // Emit back to Doctor (confirmation/update UI)
                 socket.emit("message:sent", newMessage);
+
+                // Trigger push notification to patient app via dependency hub
+                try {
+                    const isLocalEnv = process.env.NODE_ENV !== 'production' || process.env.HUB_URL;
+                    const HUB_URL = process.env.HUB_URL ||
+                        (isLocalEnv ? 'http://127.0.0.1:3028' : 'https://dependencyforphn.physicianhealthnet.com/api');
+
+                    await fetch(`${HUB_URL}/auth/send-patient-notification`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            patientId: targetPatientId,
+                            title: "New Message",
+                            body: message || "You have a new message.",
+                            data: {
+                                type: "chat",
+                                actionRoute: "/chatWindow",
+                                clinicId: String(clinicId),
+                                patientId: targetPatientId
+                            }
+                        })
+                    }).then(async res => {
+                        const resJson = await res.json();
+                        console.log("[FCM Chat doctor:message] Hub Response:", JSON.stringify(resJson));
+                    }).catch(err => {
+                        console.error("[FCM Chat doctor:message] Error calling Hub notification endpoint:", err.message);
+                    });
+                } catch (pushErr) {
+                    console.error("[FCM Chat doctor:message] Error triggering push notification request:", pushErr.message);
+                }
 
             } catch (error) {
                 console.error("Error sending doctor message:", error);
@@ -119,6 +149,36 @@ export const initializeSocket = (io) => {
                     } else {
                         io.to(chatRoom).emit("doctor:message", newMessage);
                         io.to(chatRoom).emit("message:received", newMessage);
+
+                        // Trigger push notification to patient app via dependency hub when doctor/clinic sends message
+                        try {
+                            const isLocalEnv = process.env.NODE_ENV !== 'production' || process.env.HUB_URL;
+                            const HUB_URL = process.env.HUB_URL ||
+                                (isLocalEnv ? 'http://127.0.0.1:3028' : 'https://dependencyforphn.physicianhealthnet.com/api');
+
+                            await fetch(`${HUB_URL}/auth/send-patient-notification`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    patientId: targetPatientId,
+                                    title: "New Message",
+                                    body: data.message || "You have a new message.",
+                                    data: {
+                                        type: "chat",
+                                        actionRoute: "/chatWindow",
+                                        clinicId: String(clinicId),
+                                        patientId: targetPatientId
+                                    }
+                                })
+                            }).then(async res => {
+                                const resJson = await res.json();
+                                console.log("[FCM Chat message:send] Hub Response:", JSON.stringify(resJson));
+                            }).catch(err => {
+                                console.error("[FCM Chat message:send] Error calling Hub notification endpoint:", err.message);
+                            });
+                        } catch (pushErr) {
+                            console.error("[FCM Chat message:send] Error triggering push notification request:", pushErr.message);
+                        }
                     }
                     socket.emit("message:sent", newMessage);
                 }
